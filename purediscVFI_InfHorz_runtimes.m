@@ -119,7 +119,7 @@ for a_c=1:length(N_a_vec)
 
 
 
-            %% First, just some copy-paste of toolkit internals to get things setup
+            %% Some copy-paste of toolkit internals to get things setup
             tic;
 
             a_grid=gpuArray(a_grid);
@@ -132,7 +132,7 @@ for a_c=1:length(N_a_vec)
 
             ReturnMatrix=CreateReturnFnMatrix_Case1_Disc_nod_Par2(ReturnFn, n_a, n_z, a_grid, z_gridvals, ReturnFnParamsVec);
 
-            N_a=prod(n_a);
+            N_a=gpuArray(prod(n_a));
             N_z=prod(n_z);
 
             pi_z_alt=shiftdim(pi_z',-1);
@@ -209,9 +209,9 @@ for a_c=1:length(N_a_vec)
             % H=80; % number of Howards iterations
             pi_z_howards2=shiftdim(pi_z',-1);
 
-            aind=(1:1:N_a)';
-            zind=0:1:N_z-1; % already contains -1
-            azind=aind+N_a*zind;
+            aind=gpuArray((1:1:N_a)');
+            N_a_times_zind=gpuArray(0:1:N_z-1); % already contains -1
+            azind=gpuArray(aind+N_a_times_zind);
 
             tempcounter2=1;
             currdist=Inf;
@@ -238,9 +238,8 @@ for a_c=1:length(N_a_vec)
                     % Get the return matrix F() for the current policy
                     tempmaxindex=shiftdim(Policy,1)+addindexforaz; % aprime index, add the index for a and z
                     Ftemp=reshape(ReturnMatrix(tempmaxindex),[N_a*N_z,1]); % keep return function of optimal policy for using in Howards
-                    indp = shiftdim(Policy,1)+N_a*zind;
+                    indp = shiftdim(Policy,1)+N_a_times_zind;
                     Q = sparse(azind(:),indp(:),1,N_a*N_z,N_a*N_z); % policy as mapping from (a,z) to (a',z)
-                    % OR        Q = sparse(azind,indp,1,N_a*N_z,N_a*N_z); % policy as mapping from (a,z) to (a',z)
                     for Howards_counter=1:H
                         EVKrontemp=VKron.*pi_z_howards2; % switch from V on (a',z') to EV on (a',z)
                         EVKrontemp(isnan(EVKrontemp))=0;
@@ -269,8 +268,11 @@ for a_c=1:length(N_a_vec)
 
             tic;
             % Setup specific to greedy Howards
-            spI = speye(N_a*N_z);
-            T_pi_z=sparse(repelem(pi_z,N_a,N_a)); % row is this period, column is next period: (a,z) to (a',z')
+            spI = gpuarray.speye(N_a*N_z);
+            T_pi_z=sparse(gpuArray(repelem(pi_z,N_a,N_a))); % row is this period, column is next period: (a,z) to (a',z')
+            N_a_times_zind=gpuArray(0:1:N_z-1); % already contains -1
+            azind=repelem(gpuArray(1:1:N_a*N_z)',1,N_z);
+            pi_z_big=gpuArray(repelem(pi_z,N_a,1));
 
             tempcounter3=1;
             currdist=Inf;
@@ -297,7 +299,7 @@ for a_c=1:length(N_a_vec)
                     tempmaxindex=shiftdim(Policy,1)+addindexforaz; % aprime index, add the index for a and z
                     Ftemp=reshape(ReturnMatrix(tempmaxindex),[N_a*N_z,1]); % keep return function of optimal policy for using in Howards
 
-                    T_E=sparse(repelem((1:1:N_a*N_z)',1,N_z),Policy(:)+N_a*(0:1:N_z-1),repelem(pi_z,N_a,1),N_a*N_z,N_a*N_z);
+                    T_E=sparse(azind,Policy(:)+N_a_times_zind,pi_z_big,N_a*N_z,N_a*N_z);
 
                     VKron=(spI-DiscountFactorParamsVec*T_E)\Ftemp;
                     VKron=reshape(VKron,[N_a,N_z]);
